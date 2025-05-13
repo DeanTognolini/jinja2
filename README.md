@@ -34,7 +34,7 @@ This project is a Python-based tool that uses Jinja2 templates to generate devic
 3. Run the Script:
     * Execute the script to generate configurations: `python render_device_configs.py`.
 4. Output:
-    * The rendered configurations will be saved as <device_name>_config.txt in the project directory.
+    * The rendered configurations will be saved as <device_name>_config.txt in the output directory.
 
 ## Examples
 * Sample YAML definitions: `devices.yaml`.

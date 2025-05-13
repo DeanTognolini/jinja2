@@ -4,10 +4,16 @@ import logging
 from jinja2 import Environment, FileSystemLoader, TemplateNotFound
 
 # Configure logging
-tk = logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
-# Directory containing the Jinja2 templates
-template_dir = os.path.dirname(__file__)
+# Base directory of this script
+base_dir = os.path.dirname(__file__)
+# Directory containing Jinja2 templates
+template_dir = os.path.join(base_dir, "templates")
+# Directory for rendered output files
+output_dir = os.path.join(base_dir, "output")
+# Ensure output directory exists
+os.makedirs(output_dir, exist_ok=True)
 
 # Initialize the Jinja2 environment
 env = Environment(
@@ -22,55 +28,50 @@ def render_device_configs(devices_file):
         with open(devices_file, 'r') as f:
             devices_data = yaml.safe_load(f)
 
-        # Validate the structure of the YAML file
+        # Validate structure
         if 'devices' not in devices_data:
             logging.error("Invalid YAML structure: 'devices' key not found.")
             return
 
         for device in devices_data['devices']:
-            # Extract device details
             device_name = device.get('name')
             if not device_name:
                 logging.warning("Device entry missing 'name'. Skipping...")
                 continue
 
-            # Determine template file: use 'template' field if provided, else fallback to type-based default
-            template_file = device.get('template')
-            if not template_file:
-                template_file = f"{device.get('type', 'default')}_template.j2"
+            # Determine template file (explicit or fallback to type)
+            template_file = device.get('template') or f"{device.get('type', 'default')}_template.j2"
 
-            # Attempt to load the specified template
+            # Load template
             try:
                 template = env.get_template(template_file)
             except TemplateNotFound:
-                logging.warning(f"Template file {template_file} not found for device {device_name}. Skipping...")
+                logging.warning(f"Template {template_file} not found for {device_name}. Skipping...")
                 continue
 
-            # Render the template with device details
+            # Render template
             try:
                 rendered_config = template.render(device)
-            except Exception as render_error:
-                logging.error(f"Error rendering template for {device_name}: {render_error}")
+            except Exception as e:
+                logging.error(f"Error rendering {device_name}: {e}")
                 continue
 
-            # Write the rendered config to the output file
-            output_file = os.path.join(template_dir, f"{device_name}_config.txt")
+            # Write output file to output directory
+            output_path = os.path.join(output_dir, f"{device_name}_config.txt")
             try:
-                with open(output_file, 'w') as out_f:
+                with open(output_path, 'w') as out_f:
                     out_f.write(rendered_config)
-                logging.info(f"Configuration for {device_name} rendered and saved to {output_file}")
-            except Exception as write_error:
-                logging.error(f"Error writing configuration for {device_name}: {write_error}")
+                logging.info(f"Configuration for {device_name} saved to {output_path}")
+            except Exception as e:
+                logging.error(f"Error writing {device_name} config: {e}")
 
     except FileNotFoundError:
         logging.error(f"Devices file {devices_file} not found.")
-    except yaml.YAMLError as yaml_error:
-        logging.error(f"Error parsing YAML file: {yaml_error}")
+    except yaml.YAMLError as e:
+        logging.error(f"Error parsing YAML: {e}")
     except Exception as e:
         logging.error(f"Unexpected error: {e}")
 
 if __name__ == "__main__":
-    # Path to the devices YAML file
-    devices_file = os.path.join(template_dir, "devices.yaml")
-    # Render configurations for all devices
+    devices_file = os.path.join(base_dir, "devices.yaml")
     render_device_configs(devices_file)

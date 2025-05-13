@@ -1,7 +1,7 @@
 devices:
   - name: router1
     type: router
-    template: ios_router_teate.j2
+    template: ios_router_template.j2
     nameserver: 10.10.10.10
     domain_name: foo.com
     enable_secret: Password123!
