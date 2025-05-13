@@ -1,6 +1,189 @@
 devices:
   - name: router1
     type: router
+    template: ios_router_teate.j2
+    nameserver: 10.10.10.10
+    domain_name: foo.com
+    enable_secret: Password123!
+
+    users:
+      - name: admin
+        secret: Password123!
+      - name: admin2
+        secret: Password123!
+
+    vrfs:
+      - name: CUSTOMER_A
+        rd: "65001:10"
+        import_rt:
+          - "65001:10"
+        export_rt:
+          - "65001:10"
+
+      - name: CUSTOMER_B
+        rd: "65001:20"
+        import_rt:
+          - "65001:20"
+          - "65001:10"
+        export_rt:
+          - "65001:20"
+
+    ints:
+      - name: Loopback0
+        desc: OAM
+        ip: 1.1.1.1
+        mask: 255.255.255.255
+      - name: Tunnel0
+        desc: GRE
+        ip: 172.16.0.1
+        mask: 255.255.255.252
+        mtu: 1500
+        adjust_mss: 1360
+        loadinterval: 30
+        tunsrc: 192.168.0.1
+        tundst: 192.168.0.10
+      - name: GigabitEthernet0/0
+        desc: WAN
+        ip: 192.168.0.1
+        mask: 255.255.255.0
+        negotiation_auto: true
+        speed: 1000000
+        mpls: true
+        bfd:
+          interval: 50
+          min_rx: 50
+          multiplier: 3
+      - name: GigabitEthernet0/1
+        desc: LAN
+        ip: 192.168.1.1
+        mask: 255.255.255.0
+        vrf: CUSTOMER_B
+        negotiation_auto: false
+        speed: 1000000
+        mpls: false
+        pim: sparse-mode
+        vrrp:
+          - id: 1
+            virtual_ip: 10.1.1.254
+            priority: 110
+            preempt: true
+            timers: 250
+          - id: 2
+            virtual_ip: 10.1.1.253
+        bfd:
+          interval: 50
+          min_rx: 50
+          multiplier: 3
+
+    ospf:
+      process_id: 1
+      router_id: 1.1.1.1
+      networks:
+        - ip: 192.168.0.0
+          wildcard: 0.0.0.255
+          area: 0
+        - ip: 1.1.1.1
+          wildcard: 0.0.0.0
+          area: 0
+      active_interfaces:
+        - GigabitEthernet0/0/0
+        - Loopback0
+
+    bgp:
+      asn: 65001
+      router_id: 1.1.1.1
+      log_neighbor_changes: true
+      neighbors:
+        - ip: 10.0.0.2
+          remote_as: 65002
+          description: Peer to Router2
+          update_source: Loopback0
+          timers: "10 30"
+          fall_over_route_map: BGP_FAILOVER_CHECK
+        - ip: 192.0.2.2
+          remote_as: 65003
+          ebgp_multihop: 2
+
+      address_families:
+        - afi: ipv4
+          safi: unicast
+          neighbors:
+            - ip: 10.0.0.2
+              send_community: both
+              next_hop_self: true
+              soft_reconfiguration_inbound: true
+              route_maps:
+                in: RM-IN
+                out: RM-OUT
+            - ip: 192.0.2.2
+              send_community: both
+              next_hop_self: true
+              soft_reconfiguration_inbound: true
+          networks:
+            - 192.168.0.0
+            - 10.0.0.0
+
+        - afi: vpnv4
+          safi: unicast
+          neighbors:
+            - ip: 10.0.0.2
+              route_reflector_client: true
+              route_maps:
+                in: VPNV4-RM-IN
+                out: VPNV4-RM-OUT
+          networks: []
+
+      vrfs:
+        - name: CUSTOMER_A
+          networks:
+            - 10.10.10.0
+            - 10.10.11.0
+          neighbors:
+            - ip: 192.168.100.1
+              remote_as: 65010
+              description: CE1
+              send_community: both
+              timers: "5 15"
+              route_maps:
+                in: RM-CE-IN
+              bfd: true
+        - name: CUSTOMER_B
+          networks:
+            - 10.20.20.0
+          neighbors:
+            - ip: 192.168.200.1
+              remote_as: 65020
+
+    static_routes:
+      global:
+        - prefix: 203.0.113.0 255.255.255.0
+          next_hop: 192.0.2.1
+        - prefix: 198.51.100.0 255.255.255.0
+          next_hop: Null0
+
+      vrfs:
+        - name: CUSTOMER_A
+          routes:
+            - prefix: 10.10.99.0 255.255.255.0
+              next_hop: 192.168.100.2
+        - name: CUSTOMER_B
+          routes:
+            - prefix: 10.20.99.0 255.255.255.0
+              next_hop: 192.168.200.2
+
+    multicast_routing:
+      global: true
+      rp_address: 10.10.10.10
+      vrfs:
+        - CUSTOMER_A
+        - CUSTOMER_B
+    
+    tacacs:
+      src_int: Loopback0
+
+  - name: router2
+    type: router
+    template: ios_router_template.j2
     nameserver: 10.10.10.10
     domain_name: foo.com
     enable_secret: Password123!
