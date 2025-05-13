@@ -1,0 +1,248 @@
+!
+service timestamps debug datetime msec localtime show-timezone
+service timestamps log datetime msec localtime show-timezone
+service password-encryption
+!
+hostname {{ name }}
+!
+{% if vrfs %}
+{% for vrf in vrfs %}
+ip vrf {{ vrf.name }}
+ rd {{ vrf.rd }}
+{% for rt in vrf.import_rt %}
+ route-target import {{ rt }}
+{% endfor %}
+{% for rt in vrf.export_rt %}
+ route-target export {{ rt }}
+!
+{% endfor %}
+{% endfor %}
+{% endif %}
+{% if multicast_routing.global %}
+ip multicast-routing distributed
+{% endif %}
+{% for vrf in multicast_routing.vrfs %}
+ip multicast-routing vrf {{ vrf }} distributed
+{% endfor %}
+!
+!
+!
+!
+!
+ip name-server {{ nameserver }}
+no ip domain-lookup
+ip domain-name {{ domain_name }}
+!
+enable secret {{ enable_secret }}
+!
+{% for user in users %}
+username {{ user.name }} privilege 15 secret {{ user.secret }}
+{% endfor %}
+!
+service password-encryption
+!
+ip routing
+!
+{% for int in ints %}
+interface {{ int.name }}
+{% if int.desc %}
+ description {{ int.desc }}
+{% endif %}
+{% if int.speed %}
+ bandwidth {{ int.speed }}
+{% endif %}
+{% if int.vrf %}
+ ip vrf forwarding {{ int.vrf }}
+{% endif %}
+{% if int.ip %}
+ ip address {{ int.ip }} {{ int.mask }}
+{% endif %}
+{% if int.pim %}
+ ip pim {{ int.pim }}
+{% endif %}
+{% if int.mtu %}
+ ip mtu {{ int.mtu }}
+{% endif %}
+{% if int.adjust_mss %}
+ ip tcp adjust-mss {{ int.adjust_mssmss }}
+{% endif %}
+{% if int.loadinterval %}
+ load-interval 30 {{ int.loadinterval }}
+{% endif %}
+{% if int.tunsrc %}
+ tunnel source {{ int.tunsrc }}
+{% endif %}
+{% if int.tundst %}
+ tunnel destination {{ int.tundst }}
+{% endif %}
+{% if int.negotiation_auto %}
+ negotiation auto
+{% endif %}
+{% if int.mpls %}
+ mpls ip
+{% endif %}
+{% if int.vrrp %}
+{% for group in int.vrrp %}
+ vrrp {{ group.id }} ip {{ group.virtual_ip }}
+{% if group.priority %}
+ vrrp {{ group.id }} priority {{ group.priority }}
+{% endif %}
+{% if group.timers %}
+ vrrp {{ group.id }} timers advertise msec {{ group.timers }}
+{% endif %}
+{% if group.preempt %}
+ vrrp {{ group.id }} preempt
+{% endif %}
+{% endfor %}
+{% endif %}
+{% if int.bfd %}
+ bfd interval {{ int.bfd.interval }} min_rx {{ int.bfd.min_rx }} multiplier {{ int.bfd.multiplier }}
+{% endif %}
+ no shutdown
+!
+{% endfor %}
+{% if ospf %}
+router ospf {{ ospf.process_id }}
+ router-id {{ ospf.router_id }}
+{% for net in ospf.networks %}
+ network {{ net.ip }} {{ net.wildcard }} area {{ net.area }}
+{% endfor %}
+ passive-interface default
+{% for int in ospf.active_interfaces %}
+ no passive-interface {{ int }}
+{% endfor %}
+{% endif %}
+!
+{% if bgp %}
+router bgp {{ bgp.asn }}
+ bgp router-id {{ bgp.router_id }}
+{% if bgp.log_neighbor_changes %}
+ bgp log-neighbor-changes
+{% endif %}
+{% for neighbor in bgp.neighbors %}
+ neighbor {{ neighbor.ip }} remote-as {{ neighbor.remote_as }}
+{% if neighbor.description %}
+ neighbor {{ neighbor.ip }} description {{ neighbor.description }}
+{% endif %}
+{% if neighbor.update_source %}
+ neighbor {{ neighbor.ip }} update-source {{ neighbor.update_source }}
+{% endif %}
+{% if neighbor.ebgp_multihop %}
+ neighbor {{ neighbor.ip }} ebgp-multihop {{ neighbor.ebgp_multihop }}
+{% endif %}
+{% if neighbor.password %}
+ neighbor {{ neighbor.ip }} password {{ neighbor.password }}
+{% endif %}
+{% if neighbor.timers %}
+ neighbor {{ neighbor.ip }} timers {{ neighbor.timers }}
+{% endif %}
+{% if neighbor.fall_over_route_map %}
+ neighbor {{ neighbor.ip }} fall-over route-map {{ neighbor.fall_over_route_map }}
+{% endif %}
+{% endfor %}
+!
+{% for af in bgp.address_families %}
+ address-family {{ af.afi }} {{ af.safi }}
+{% for network in af.networks %}
+  network {{ network }}
+{% endfor %}
+{% for neighbor in af.neighbors %}
+  neighbor {{ neighbor.ip }} activate
+{% if neighbor.send_community %}
+  neighbor {{ neighbor.ip }} send-community {{ neighbor.send_community }}
+{% endif %}
+{% if neighbor.next_hop_self %}
+  neighbor {{ neighbor.ip }} next-hop-self
+{% endif %}
+{% if neighbor.soft_reconfiguration_inbound %}
+  neighbor {{ neighbor.ip }} soft-reconfiguration inbound
+{% endif %}
+{% if neighbor.route_reflector_client %}
+  neighbor {{ neighbor.ip }} route-reflector-client
+{% endif %}
+{% if neighbor.route_maps %}
+{% if neighbor.route_maps.in %}
+  neighbor {{ neighbor.ip }} route-map {{ neighbor.route_maps.in }} in
+{% endif %}
+{% if neighbor.route_maps.out %}
+  neighbor {{ neighbor.ip }} route-map {{ neighbor.route_maps.out }} out
+{% endif %}
+{% endif %}
+{% endfor %}
+ exit-address-family
+ !
+{% endfor %}
+!
+{% for vrf in bgp.vrfs %}
+ address-family ipv4 vrf {{ vrf.name }}
+{% for network in vrf.networks %}
+  network {{ network }}
+{% endfor %}
+{% for neighbor in vrf.neighbors %}
+  neighbor {{ neighbor.ip }} remote-as {{ neighbor.remote_as }}
+{% if neighbor.description %}
+  neighbor {{ neighbor.ip }} description {{ neighbor.description }}
+{% endif %}
+{% if neighbor.timers %}
+  neighbor {{ neighbor.ip }} timers {{ neighbor.timers }}
+{% endif %}
+{% if neighbor.fall_over_route_map %}
+  neighbor {{ neighbor.ip }} fall-over route-map {{ neighbor.fall_over_route_map }}
+{% endif %}
+{% if neighbor.route_maps %}
+{% if neighbor.route_maps.in %}
+  neighbor {{ neighbor.ip }} route-map {{ neighbor.route_maps.in }} in
+{% endif %}
+{% if neighbor.route_maps.out %}
+  neighbor {{ neighbor.ip }} route-map {{ neighbor.route_maps.out }} out
+{% endif %}
+{% endif %}
+  neighbor {{ neighbor.ip }} activate
+{% if neighbor.send_community %}
+  neighbor {{ neighbor.ip }} send-community {{ neighbor.send_community }}
+{% endif %}
+{% if neighbor.bfd %}
+  neighbor {{ neighbor.ip }} fall-over bfd
+{% endif %}
+{% endfor %}
+ exit-address-family
+!
+{% endfor %}
+{% endif %}
+!
+{% if multicast_routing.rp_address %}
+ip pim rp-address {{ multicast_routing.rp_address }}
+{% endif %}
+{% if static_routes.global %}
+{% for route in static_routes.global %}
+ip route {{ route.prefix }} {{ route.next_hop }}
+{% endfor %}
+{% endif %}
+{% if static_routes.vrfs %}
+{% for vrf in static_routes.vrfs %}
+{% for route in vrf.routes %}
+ip route vrf {{ vrf.name }} {{ route.prefix }} {{ route.next_hop }}
+{% endfor %}
+{% endfor %}
+{% endif %}
+{% if tacacs.src_int %}
+ip tacacs source-interface {{ tacacs.src_int }}
+{% endif %}
+!
+line console 0
+ login local
+ exec-timeout 10 0
+!
+line vty 0 4
+ login local
+ transport input ssh
+!
+crypto key generate rsa modulus 2048
+ip ssh version 2
+!
+banner motd ^C
+UNAUTHORIZED ACCESS IS PROHIBITED
+^C
+!
+end
+write memory
