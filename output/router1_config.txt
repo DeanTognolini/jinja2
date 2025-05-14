@@ -1,52 +1,61 @@
 !
-service timestamps debug datetime msec localtime show-timezone
-service timestamps log datetime msec localtime show-timezone
-service password-encryption
-!
 hostname router1
 !
-ip vrf CUSTOMER_A
+service timestamps log datetime localtime msec show-timezone
+service timestamps debug datetime localtime msec show-timezone
+domain name foo.com
+domain name-server 10.10.10.10
+domain name-server 10.10.10.11
+domain lookup source-interface Loopback0
+domain vrf VRF-OOB-MGMT name foo.com
+domain vrf VRF-OOB-MGMT name-server 10.20.10.10
+domain vrf VRF-OOB-MGMT name-server 10.20.10.11
+domain vrf VRF-OOB-MGMT lookup source-interface MgmtEth0/RP0/CPU0/0
+!
+username root
+ group root-lr
+ group netadmin
+ group sysadmin
+ secret 10 Password123!
+!
+vrf CUSTOMER_A
  rd 65001:10
- route-target import 65001:10
- route-target export 65001:10
+ address-family ipv4 unicast
+  import route-target
+   65001:10
+   !
+   export route-target
+   65001:10
+  !
+ !
 !
-ip vrf CUSTOMER_B
+vrf CUSTOMER_B
  rd 65001:20
- route-target import 65001:20
- route-target import 65001:10
- route-target export 65001:20
+ address-family ipv4 unicast
+  import route-target
+   65001:20
+   65001:10
+   !
+   export route-target
+   65001:20
+  !
+ !
 !
-ip multicast-routing distributed
-ip multicast-routing vrf CUSTOMER_A distributed
-ip multicast-routing vrf CUSTOMER_B distributed
+ntp
+ server 10.10.10.10 prefer
 !
-!
-!
-!
-!
-ip name-server 10.10.10.10
-no ip domain-lookup
-ip domain-name foo.com
-!
-enable secret Password123!
-!
-username admin privilege 15 secret Password123!
-username admin2 privilege 15 secret Password123!
-!
-service password-encryption
-!
-ip routing
+enable secret 
 !
 interface Loopback0
  description OAM
- ip address 1.1.1.1 255.255.255.255
+ ipv4 address 1.1.1.1 255.255.255.255
  no shutdown
 !
 interface Tunnel0
  description GRE
- ip address 172.16.0.1 255.255.255.252
- ip mtu 1500
- ip tcp adjust-mss 
+ ipv4 address 172.16.0.1 255.255.255.252
+ mtu 1500
+ tcp adjust-mss 1360
  load-interval 30 30
  tunnel source 192.168.0.1
  tunnel destination 192.168.0.10
@@ -55,108 +64,123 @@ interface Tunnel0
 interface GigabitEthernet0/0
  description WAN
  bandwidth 1000000
- ip address 192.168.0.1 255.255.255.0
+ ipv4 address 192.168.0.1 255.255.255.0
  negotiation auto
  mpls ip
- bfd interval 50 min_rx 50 multiplier 3
+ bfd interval 50 min-rx 50 multiplier 3
  no shutdown
 !
 interface GigabitEthernet0/1
  description LAN
  bandwidth 1000000
- ip vrf forwarding CUSTOMER_B
- ip address 192.168.1.1 255.255.255.0
- ip pim sparse-mode
- vrrp 1 ip 10.1.1.254
- vrrp 1 priority 110
- vrrp 1 timers advertise msec 250
- vrrp 1 preempt
- vrrp 2 ip 10.1.1.253
- bfd interval 50 min_rx 50 multiplier 3
+ vrf CUSTOMER_B
+ ipv4 address 192.168.1.1 255.255.255.0
+ ipv4 pim sparse-mode
+ standby 1 ip 10.1.1.254
+ standby 1 priority 110
+ standby 1 timers msec 250
+ standby 1 preempt
+ standby 2 ip 10.1.1.253
+ bfd interval 50 min-rx 50 multiplier 3
  no shutdown
 !
 router ospf 1
  router-id 1.1.1.1
- network 192.168.0.0 0.0.0.255 area 0
- network 1.1.1.1 0.0.0.0 area 0
- passive-interface default
- no passive-interface GigabitEthernet0/0/0
- no passive-interface Loopback0
-!
-router bgp 65001
- bgp router-id 1.1.1.1
- bgp log-neighbor-changes
- neighbor 10.0.0.2 remote-as 65002
- neighbor 10.0.0.2 description Peer to Router2
- neighbor 10.0.0.2 update-source Loopback0
- neighbor 10.0.0.2 timers 10 30
- neighbor 10.0.0.2 fall-over route-map BGP_FAILOVER_CHECK
- neighbor 192.0.2.2 remote-as 65003
- neighbor 192.0.2.2 ebgp-multihop 2
-!
+ mpls ldp sync
+ auto-cost reference bandwidth 100000
  address-family ipv4 unicast
-  network 192.168.0.0
-  network 10.0.0.0
-  neighbor 10.0.0.2 activate
-  neighbor 10.0.0.2 send-community both
-  neighbor 10.0.0.2 next-hop-self
-  neighbor 10.0.0.2 soft-reconfiguration inbound
-  neighbor 10.0.0.2 route-map RM-IN in
-  neighbor 10.0.0.2 route-map RM-OUT out
-  neighbor 192.0.2.2 activate
-  neighbor 192.0.2.2 send-community both
-  neighbor 192.0.2.2 next-hop-self
-  neighbor 192.0.2.2 soft-reconfiguration inbound
- exit-address-family
+ area 0
+  interface Loopback0
+  !
+  interface GigabitEthernet0/0
+   cost 1000
+   authentication message-digest
+   message-digest-key 100 md5 encrypted <MD5>
+   hello-interval 3
+   dead-interval 9
+  !
+ !
+!
+router bgp 65000
+ bgp router-id 1.1.1.1
+ bgp log neighbor changes detail
+ address-family ipv4 unicast
+  network 0.0.0.0/0
+  network 10.0.0.0/8
+ !
+neighbor 10.0.0.1
+ remote-as 65001
+ timers 10 30
+ description PEER1
+ address-family ipv4 unicast
+  maximum-prefix 1000 75
+  route-policy RM-IN in
+  route-policy RM-OUT out
+  soft-reconfiguration inbound always
  !
  address-family vpnv4 unicast
-  neighbor 10.0.0.2 activate
-  neighbor 10.0.0.2 route-reflector-client
-  neighbor 10.0.0.2 route-map VPNV4-RM-IN in
-  neighbor 10.0.0.2 route-map VPNV4-RM-OUT out
- exit-address-family
+ !
+ vrf CUSTOMER_A
+  rd 64700:100
+  address-family ipv4 unicast
+   network 192.168.0.1/24
+  !
+  neighbor 10.0.0.1
+    remote-as 65401
+    description PEER2
+    timers 3 10
+    address-family ipv4 unicast
+     maximum-prefix 1000 75
+     route-policy RM-IN in
+     route-policy RM-OUT out
+     soft-reconfiguration inbound always
+    !
+   !
+  !
+ vrf CUSTOMER_B
+  rd 64800:100
+  address-family ipv4 unicast
+   network 192.168.1.1/24
+  !
+  neighbor 10.0.0.2
+    remote-as 65401
+    description PEER2
+    timers 3 10
+    address-family ipv4 unicast
+     maximum-prefix 1000 75
+     route-policy RM-IN in
+     route-policy RM-OUT out
+     soft-reconfiguration inbound always
+    !
+   !
+  !
+!
+mpls ldp
+ router-id 1.1.1.1
+ address-family ipv4
+ !
+ interface GigabitEthernet0/0
+ !
+ interface GigabitEthernet0/1
  !
 !
- address-family ipv4 vrf CUSTOMER_A
-  network 10.10.10.0
-  network 10.10.11.0
-  neighbor 192.168.100.1 remote-as 65010
-  neighbor 192.168.100.1 description CE1
-  neighbor 192.168.100.1 timers 5 15
-  neighbor 192.168.100.1 route-map RM-CE-IN in
-  neighbor 192.168.100.1 activate
-  neighbor 192.168.100.1 send-community both
-  neighbor 192.168.100.1 fall-over bfd
- exit-address-family
+multicast-routing
+ address-family ipv4
+  interface Loopback0
+   enable
+  !
+  interface GigabitEthernet0/0
+   enable
+  !
+router pim
+ address-family ipv4
+  rp-address 10.1.1.1 ACL-MCAST-PIM-RP
+  register-source Loopback0
+  interface Loopback0
+   enable
+  !
+  interface GigabitEthernet0/0
+   enable
+  !
+ !
 !
- address-family ipv4 vrf CUSTOMER_B
-  network 10.20.20.0
-  neighbor 192.168.200.1 remote-as 65020
-  neighbor 192.168.200.1 activate
- exit-address-family
-!
-!
-ip pim rp-address 10.10.10.10
-ip route 203.0.113.0 255.255.255.0 192.0.2.1
-ip route 198.51.100.0 255.255.255.0 Null0
-ip route vrf CUSTOMER_A 10.10.99.0 255.255.255.0 192.168.100.2
-ip route vrf CUSTOMER_B 10.20.99.0 255.255.255.0 192.168.200.2
-ip tacacs source-interface Loopback0
-!
-line console 0
- login local
- exec-timeout 10 0
-!
-line vty 0 4
- login local
- transport input ssh
-!
-crypto key generate rsa modulus 2048
-ip ssh version 2
-!
-banner motd ^C
-UNAUTHORIZED ACCESS IS PROHIBITED
-^C
-!
-end
-write memory

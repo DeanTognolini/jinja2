@@ -1,0 +1,269 @@
+!
+hostname {{ name }}
+!
+service timestamps log datetime localtime msec show-timezone
+service timestamps debug datetime localtime msec show-timezone
+domain name {{ dns.domain_name }}
+{% for srv in dns.nameservers %}
+domain name-server {{ srv }}
+{% endfor %}
+domain lookup source-interface {{ dns.srcint }}
+{% if dns.vrfs %}
+    {% for vrf in dns.vrfs %}
+domain vrf {{ vrf.name }} name {{ vrf.domain_name }}
+        {% for srv in vrf.nameservers %}
+domain vrf {{ vrf.name }} name-server {{ srv }}
+        {% endfor %}
+domain vrf {{ vrf.name }} lookup source-interface {{ vrf.srcint }}
+    {% endfor %}
+{% endif %}
+!
+username root
+ group root-lr
+ group netadmin
+ group sysadmin
+ secret 10 Password123!
+!
+{% if vrfs %}
+    {% for vrf in vrfs %}
+vrf {{ vrf.name }}
+ rd {{ vrf.rd }}
+ address-family ipv4 unicast
+  import route-target
+        {% for rt in vrf.import_rt %}
+   {{ rt }}
+        {% endfor %}
+   !
+   export route-target{{ rt }}
+        {% for rt in vrf.export_rt %}
+   {{ rt }}
+        {% endfor %}
+  !
+ !
+!
+    {% endfor %}
+{% endif %}
+ntp
+ server 10.10.10.10 prefer
+!
+enable secret {{ enable_secret }}
+!
+{% for int in ints %}
+interface {{ int.name }}
+{% if int.desc %}
+ description {{ int.desc }}
+{% endif %}
+{% if int.speed %}
+ bandwidth {{ int.speed }}
+{% endif %}
+{% if int.vrf %}
+ vrf {{ int.vrf }}
+{% endif %}
+{% if int.ip %}
+ ipv4 address {{ int.ip }} {{ int.mask }}
+{% endif %}
+{% if int.pim %}
+ ipv4 pim {{ int.pim }}
+{% endif %}
+{% if int.mtu %}
+ mtu {{ int.mtu }}
+{% endif %}
+{% if int.adjust_mss %}
+ tcp adjust-mss {{ int.adjust_mss }}
+{% endif %}
+{% if int.loadinterval %}
+ load-interval 30 {{ int.loadinterval }}
+{% endif %}
+{% if int.tunsrc %}
+ tunnel source {{ int.tunsrc }}
+{% endif %}
+{% if int.tundst %}
+ tunnel destination {{ int.tundst }}
+{% endif %}
+{% if int.negotiation_auto %}
+ negotiation auto
+{% endif %}
+{% if int.mpls %}
+ mpls ip
+{% endif %}
+{% if int.vrrp %}
+{% for group in int.vrrp %}
+ standby {{ group.id }} ip {{ group.virtual_ip }}
+{% if group.priority %}
+ standby {{ group.id }} priority {{ group.priority }}
+{% endif %}
+{% if group.timers %}
+ standby {{ group.id }} timers msec {{ group.timers }}
+{% endif %}
+{% if group.preempt %}
+ standby {{ group.id }} preempt
+{% endif %}
+{% endfor %}
+{% endif %}
+{% if int.bfd %}
+ bfd interval {{ int.bfd.interval }} min-rx {{ int.bfd.min_rx }} multiplier {{ int.bfd.multiplier }}
+{% endif %}
+ no shutdown
+!
+{% endfor %}
+{% if ospf %}
+router ospf {{ ospf.process_id }}
+ router-id {{ ospf.router_id }}
+{% if ospf.mpls_ldp_sync %}
+ mpls ldp sync
+{% endif %}
+{% if ospf.reference_bandwidth %}
+ auto-cost reference bandwidth {{ ospf.reference_bandwidth }}
+{% endif %}
+{% for af in ospf.address_families %}
+ address-family {{ af.afi }} {{ af.safi }}
+{% for area in af.areas %}
+ area {{ area.id }}
+{% for int in area.interfaces %}
+  interface {{ int.name }}
+{% if int.cost %}
+   cost {{ int.cost }}
+{% endif %}
+{% if int.authentication and int.authentication.type == "message-digest" %}
+   authentication message-digest
+   message-digest-key {{ int.authentication.key_id }} md5{% if int.authentication.encrypted %} encrypted{% endif %} {{ int.authentication.key }}
+{% endif %}
+{% if int.hello_interval %}
+   hello-interval {{ int.hello_interval }}
+{% endif %}
+{% if int.dead_interval %}
+   dead-interval {{ int.dead_interval }}
+{% endif %}
+  !
+{% endfor %}
+ !
+{% endfor %}
+!
+{% endfor %}
+{% endif %}
+{% if bgp %}
+router bgp {{ bgp.asn }}
+ bgp router-id {{ bgp.router_id }}
+{% if bgp.log_neighbor_changes %}
+ bgp log neighbor changes detail
+{% endif %}
+{% if bgp.default_local_pref %}
+ bgp default local-preference {{ bgp.default_local_pref }}
+{% endif %}
+{% for af in bgp.address_families %}
+ address-family {{ af.afi }} {{ af.safi }}
+{% for network in af.networks %}
+  network {{ network }}
+{% endfor %}
+ !
+{% endfor %}
+{% for neighbor in bgp.neighbors %}
+neighbor {{ neighbor.ip }}
+ remote-as {{ neighbor.remote_as }}
+{% if neighbor.timers %}
+ timers {{ neighbor.timers }}
+{% endif %}
+{% if neighbor.description %}
+ description {{ neighbor.description }}
+{% endif %}
+{% for af in neighbor.afs %}
+ address-family {{ af.afi }} {{ af.safi }}
+{% if af.max_prefix %}
+  maximum-prefix {{ af.max_prefix.limit }} {{ af.max_prefix.threshold }}
+{% endif %}
+{% if af.route_maps %}
+{% if af.route_maps.in %}
+  route-policy {{ af.route_maps.in }} in
+{% endif %}
+{% if af.route_maps.out %}
+  route-policy {{ af.route_maps.out }} out
+{% endif %}
+{% endif %}
+{% if af.soft_reconfig %}
+  soft-reconfiguration inbound always
+{% endif %}
+ !
+{% endfor %}
+{% endfor %}
+{% for vrf in bgp.vrfs %}
+ vrf {{ vrf.name }}
+  rd {{ vrf.rd }}
+{% for af in vrf.address_families %}
+  address-family {{ af.afi }} {{ af.safi }}
+{% for network in af.networks %}
+   network {{ network }}
+{% endfor %}
+  !
+{% endfor %}
+{% for neighbor in vrf.neighbors %}
+  neighbor {{ neighbor.ip }}
+    remote-as {{ neighbor.remote_as }}
+{% if neighbor.description %}
+    description {{ neighbor.description }}
+{% endif %}
+{% if neighbor.timers %}
+    timers {{ neighbor.timers }}
+{% endif %}
+{% for af in neighbor.afs %}
+    address-family {{ af.afi }} {{ af.safi }}
+{% if af.max_prefix %}
+     maximum-prefix {{ af.max_prefix.limit }} {{ af.max_prefix.threshold }}
+{% endif %}
+{% if af.route_maps %}
+{% if af.route_maps.in %}
+     route-policy {{ af.route_maps.in }} in
+{% endif %}
+{% if af.route_maps.out %}
+     route-policy {{ af.route_maps.out }} out
+{% endif %}
+{% endif %}
+{% if af.soft_reconfig %}
+     soft-reconfiguration inbound always
+{% endif %}
+    !
+{% endfor %}
+   !
+{% endfor %}
+  !
+{% endfor %}
+{% endif %}
+!
+{% if mpls_ldp %}
+mpls ldp
+ router-id {{ mpls_ldp.router_id }}
+{% for af in mpls_ldp.address_families %}
+ address-family {{ af }}
+ !
+{% endfor %}
+{% for int in mpls_ldp.interfaces %}
+ interface {{ int }}
+ !
+{% endfor %}
+{% endif %}
+!
+multicast-routing
+{% for af in multicast_routing.address_families %}
+ address-family {{ af.afi }}
+{% for int in af.interfaces %}
+  interface {{ int }}
+   enable
+  !
+{% endfor %}
+{% endfor %}
+router pim
+{% for af in pim.address_families %}
+ address-family {{ af.afi }}
+{% if af.rp_address %}
+  rp-address {{ af.rp_address.ip }} {{ af.rp_address.acl }}
+{% endif %}
+{% if af.register_source %}
+  register-source {{ af.register_source }}
+{% endif %}
+{% for intf in af.interfaces %}
+  interface {{ intf }}
+   enable
+  !
+{% endfor %}
+ !
+{% endfor %}
+!

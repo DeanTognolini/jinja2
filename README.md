@@ -5,7 +5,7 @@ This project is a Python-based tool that uses Jinja2 templates to generate devic
 ## Features
 
 - Parses device details from a YAML file (`devices.yaml`).
-- Renders device configurations using Jinja2 templates.
+- Renders device configurations using Jinja2 templates stored in `templates` directory.
 - Supports multiple device types with customizable templates.
 - Logs errors and warnings for missing templates or invalid YAML structures.
 

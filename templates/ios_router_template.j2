@@ -225,8 +225,8 @@ ip route vrf {{ vrf.name }} {{ route.prefix }} {{ route.next_hop }}
 {% endfor %}
 {% endfor %}
 {% endif %}
-{% if tacacs.src_int %}
-ip tacacs source-interface {{ tacacs.src_int }}
+{% if tacacs.srcint %}
+ip tacacs source-interface {{ tacacs.srcint }}
 {% endif %}
 !
 line console 0
